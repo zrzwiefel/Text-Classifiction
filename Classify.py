@@ -1,25 +1,18 @@
-# %%
-#import nltk
-#import re
-#from nltk.corpus import reuters
-#import spacy
-#from spacy import displacy
-#from collections import Counter
-#import en_core_web_sm
-#from sklearn.feature_extraction.text import CountVectorizer
-#from sklearn.svm import LinearSVC
-#from sklearn.feature_extraction.text import TfidfVectorizer
-#from sklearn.feature_extraction.text import TfidfTransformer
-#from sklearn.multiclass import OneVsRestClassifier
-#from sklearn.linear_model import LogisticRegression
-#from sklearn.pipeline import Pipeline
-#import pandas as pd
-#import numpy as np
-#import bs4
-#import sys
-#import string
-#import pickle
-import ClassifyTraining
+import nltk
+import re
+import spacy
+from spacy import displacy
+from collections import Counter
+import en_core_web_sm
+import pandas as pd
+import numpy as np
+import bs4
+import sys
+import string
+import pickle
+import requests
+from nltk.corpus import reuters
+
 
 file = open('OVR_TextClassifier', 'rb')
 classifier = pickle.load(file)
@@ -49,18 +42,36 @@ def SortNE(ent_list):
 #            y.append((j, text.count(j)))
 #    return y
 
+def find_article_text(strlist):
+    beg, end = False, False
+    art_text = []
+    for p in strlist:
+         if bool(re.search('Our Standards|Reporting by', p, re.IGNORECASE)) and end == False:
+              end = True
+         if beg == True and end == False:
+              art_text.append(p)
+         elif bool(re.search('min|hour', p, re.IGNORECASE)) and beg == False:
+                beg = True
+    if len(art_text) < 3:
+        return ' '.join(strlist)
+    else:
+        return ' '.join(art_text)
+
 
 def CleanText(url):
     page = requests.get(url)
     if page.status_code != 404:
         soup = bs4.BeautifulSoup(page.text, 'html.parser')
-        raw_text = soup.get_text()
-        clean_text = raw_text.translate(str.maketrans('', '', re.sub('\(\)', '', string.punctuation)))
+        p_tags = soup.find_all('p')
+        tags_text = [i.get_text() for i in p_tags]
+        art_text = find_article_text(tags_text)
+        clean_text = re.sub(r'[^\w\s.%$]', ' ', art_text)
+        clean_text = re.sub(r'(?<!([A-Z\d]))\.', '', clean_text)
         clean_text = re.sub(r'\n|\s{1,}', ' ', clean_text)
-        clean_text =  re.findall(r'(?<=Reuters\)).*?(?=Additional reporting by|Reporting by|Editing by)', clean_text)
-        return clean_text
+        return [clean_text]
     else:
         return False
+
 
 def GetNamedEnt(Text):
     text_nlp = nlp(Text[0])    
@@ -79,8 +90,6 @@ def ClassifyText(url_section, url_article, named_ent = False):
     for i, j in zip(target_names, predicted[0]):
         if j == 1:
             categories.append(i)
-    if categories == []:
-        categories.append('acq')
     if named_ent == True:
         named_ent_list = []
         named_ent_set = []
@@ -93,5 +102,3 @@ def ClassifyText(url_section, url_article, named_ent = False):
         return categories, named_ent_set, article_title, [url_section + url_article], article_text
     else:
         return categories, article_title, [url_section + url_article]
-
-print('z')
